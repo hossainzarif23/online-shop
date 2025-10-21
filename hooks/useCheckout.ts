@@ -1,6 +1,6 @@
 /**
- * useCheckout Hook
- * Handles checkout form state and submission logic
+ * useCheckout Hook - Enhanced with React Query
+ * Handles checkout orchestration with automatic cache invalidation
  */
 
 import { useState } from "react";
@@ -8,7 +8,8 @@ import { useRouter } from "next/navigation";
 import { useSetAtom } from "jotai";
 import { clearCartAtom } from "@/stores/cart";
 import { toast } from "sonner";
-import { orderService, paymentService } from "@/lib/services";
+import { paymentService } from "@/lib/services";
+import { useCreateOrder } from "./useOrders";
 import type { CartItem } from "@/types";
 
 interface CheckoutAddress {
@@ -48,6 +49,7 @@ export function useCheckout(items: CartItem[], totals: CheckoutTotals) {
   const router = useRouter();
   const clearCart = useSetAtom(clearCartAtom);
   const [isProcessing, setIsProcessing] = useState(false);
+  const createOrderMutation = useCreateOrder();
 
   const processCheckout = async (data: CheckoutFormData) => {
     setIsProcessing(true);
@@ -68,8 +70,9 @@ export function useCheckout(items: CartItem[], totals: CheckoutTotals) {
         throw new Error(paymentResult.error || "Payment processing failed");
       }
 
-      // Create order
-      const order = await orderService.createOrder({
+      // Create order using React Query mutation
+      // This will automatically update the orders cache
+      const order = await createOrderMutation.mutateAsync({
         items: items.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,

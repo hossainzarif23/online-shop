@@ -26,7 +26,7 @@ export default function HomePage() {
                 <Button asChild size="lg" variant="secondary">
                   <Link href="/products">Shop Now</Link>
                 </Button>
-                <Button asChild size="lg" variant="outline">
+                <Button asChild size="lg" variant="secondary">
                   <Link href="/categories">Browse Categories</Link>
                 </Button>
               </div>

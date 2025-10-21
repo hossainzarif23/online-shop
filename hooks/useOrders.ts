@@ -1,78 +1,87 @@
 /**
- * Custom hook for fetching and managing orders
+ * useOrders Hook - Migrated to React Query
+ * Automatic caching, refetching, and state management
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { orderService } from "@/lib/services/order.service";
-import type { Order } from "@/types";
 import { toast } from "sonner";
+import type { Order, CreateOrderDto } from "@/types";
 
+// Query keys for cache management
+export const orderKeys = {
+  all: ["orders"] as const,
+  lists: () => [...orderKeys.all, "list"] as const,
+  list: (filters?: any) => [...orderKeys.lists(), filters] as const,
+  details: () => [...orderKeys.all, "detail"] as const,
+  detail: (id: string) => [...orderKeys.details(), id] as const,
+};
+
+/**
+ * Fetch all orders for the current user
+ * Automatically caches and manages loading/error states
+ */
 export function useOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchOrders = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const data = await orderService.getOrders();
-      setOrders(data);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to load orders";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+  const query = useQuery({
+    queryKey: orderKeys.lists(),
+    queryFn: () => orderService.getOrders(),
+    staleTime: 2 * 60 * 1000, // Fresh for 2 minutes
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  });
 
   return {
-    orders,
-    isLoading,
-    error,
-    refetch: fetchOrders,
+    orders: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
 }
 
+/**
+ * Fetch a single order by ID
+ * Only fetches if ID is provided
+ */
 export function useOrder(id: string | null) {
-  const [order, setOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchOrder = useCallback(async () => {
-    if (!id) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const data = await orderService.getOrderById(id);
-      setOrder(data);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to load order";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    fetchOrder();
-  }, [fetchOrder]);
+  const query = useQuery({
+    queryKey: orderKeys.detail(id!),
+    queryFn: () => orderService.getOrderById(id!),
+    enabled: !!id, // Only fetch if ID exists
+    staleTime: 5 * 60 * 1000, // Order details stay fresh longer
+  });
 
   return {
-    order,
-    isLoading,
-    error,
-    refetch: fetchOrder,
+    order: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
   };
+}
+
+/**
+ * Create a new order
+ * Automatically invalidates orders list cache on success
+ */
+export function useCreateOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (orderData: CreateOrderDto) =>
+      orderService.createOrder(orderData),
+    onSuccess: (newOrder) => {
+      // Invalidate orders list to trigger refetch
+      queryClient.invalidateQueries({ queryKey: orderKeys.lists() });
+
+      // Add new order to cache
+      queryClient.setQueryData(orderKeys.detail(newOrder.id), newOrder);
+
+      toast.success("Order created successfully!", {
+        description: `Order #${newOrder.orderNumber} has been placed.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to create order", {
+        description: error.message || "Please try again later.",
+      });
+    },
+  });
 }

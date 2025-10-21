@@ -1,8 +1,9 @@
 /**
- * Custom hook for fetching and managing addresses
+ * useAddresses Hook - Migrated to React Query
+ * Automatic caching, optimistic updates, and state management
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   addressService,
   type Address,
@@ -11,108 +12,184 @@ import {
 } from "@/lib/services/address.service";
 import { toast } from "sonner";
 
+// Query keys for cache management
+export const addressKeys = {
+  all: ["addresses"] as const,
+  lists: () => [...addressKeys.all, "list"] as const,
+  list: (filters?: any) => [...addressKeys.lists(), filters] as const,
+  details: () => [...addressKeys.all, "detail"] as const,
+  detail: (id: string) => [...addressKeys.details(), id] as const,
+};
+
+/**
+ * Fetch all addresses for the current user
+ * Automatically caches and manages loading/error states
+ */
 export function useAddresses() {
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchAddresses = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  // Fetch addresses
+  const query = useQuery({
+    queryKey: addressKeys.lists(),
+    queryFn: () => addressService.getAddresses(),
+    staleTime: 2 * 60 * 1000, // Fresh for 2 minutes
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  });
 
-    try {
-      const data = await addressService.getAddresses();
-      setAddresses(data);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to load addresses";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Create address mutation
+  const createMutation = useMutation({
+    mutationFn: (data: CreateAddressDto) => addressService.createAddress(data),
+    onMutate: async (newAddress) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: addressKeys.lists() });
 
-  const createAddress = useCallback(async (data: CreateAddressDto) => {
-    try {
-      const newAddress = await addressService.createAddress(data);
-      setAddresses((prev) => [...prev, newAddress]);
-      toast.success("Address added successfully");
-      return newAddress;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to add address";
-      toast.error(message);
-      throw err;
-    }
-  }, []);
+      // Snapshot the previous value
+      const previousAddresses = queryClient.getQueryData(addressKeys.lists());
 
-  const updateAddress = useCallback(
-    async (id: string, data: UpdateAddressDto) => {
-      try {
-        const updatedAddress = await addressService.updateAddress(id, data);
-        setAddresses((prev) =>
-          prev.map((addr) => (addr.id === id ? updatedAddress : addr))
-        );
-        toast.success("Address updated successfully");
-        return updatedAddress;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to update address";
-        toast.error(message);
-        throw err;
-      }
+      // Optimistically update to the new value
+      queryClient.setQueryData(addressKeys.lists(), (old: Address[] = []) => [
+        ...old,
+        { ...newAddress, id: "temp-" + Date.now() } as Address,
+      ]);
+
+      return { previousAddresses };
     },
-    []
-  );
+    onSuccess: () => {
+      toast.success("Address added successfully");
+    },
+    onError: (error: Error, _newAddress, context) => {
+      // Rollback on error
+      if (context?.previousAddresses) {
+        queryClient.setQueryData(
+          addressKeys.lists(),
+          context.previousAddresses
+        );
+      }
+      toast.error(error.message || "Failed to add address");
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: addressKeys.lists() });
+    },
+  });
 
-  const deleteAddress = useCallback(async (id: string) => {
-    const confirmed = confirm("Are you sure you want to delete this address?");
-    if (!confirmed) return;
+  // Update address mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateAddressDto }) =>
+      addressService.updateAddress(id, data),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: addressKeys.lists() });
 
-    try {
-      await addressService.deleteAddress(id);
-      setAddresses((prev) => prev.filter((addr) => addr.id !== id));
+      const previousAddresses = queryClient.getQueryData(addressKeys.lists());
+
+      queryClient.setQueryData(addressKeys.lists(), (old: Address[] = []) =>
+        old.map((addr) => (addr.id === id ? { ...addr, ...data } : addr))
+      );
+
+      return { previousAddresses };
+    },
+    onSuccess: () => {
+      toast.success("Address updated successfully");
+    },
+    onError: (error: Error, _variables, context) => {
+      if (context?.previousAddresses) {
+        queryClient.setQueryData(
+          addressKeys.lists(),
+          context.previousAddresses
+        );
+      }
+      toast.error(error.message || "Failed to update address");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: addressKeys.lists() });
+    },
+  });
+
+  // Delete address mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => addressService.deleteAddress(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: addressKeys.lists() });
+
+      const previousAddresses = queryClient.getQueryData(addressKeys.lists());
+
+      // Optimistically remove from UI
+      queryClient.setQueryData(addressKeys.lists(), (old: Address[] = []) =>
+        old.filter((addr) => addr.id !== id)
+      );
+
+      return { previousAddresses };
+    },
+    onSuccess: () => {
       toast.success("Address deleted successfully");
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to delete address";
-      toast.error(message);
-      throw err;
-    }
-  }, []);
+    },
+    onError: (error: Error, _id, context) => {
+      if (context?.previousAddresses) {
+        queryClient.setQueryData(
+          addressKeys.lists(),
+          context.previousAddresses
+        );
+      }
+      toast.error(error.message || "Failed to delete address");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: addressKeys.lists() });
+    },
+  });
 
-  const setDefaultAddress = useCallback(async (id: string) => {
-    try {
-      const updatedAddress = await addressService.updateAddress(id, {
-        isDefault: true,
-      });
-      // Update all addresses - set the selected one as default, others as false
-      setAddresses((prev) =>
-        prev.map((addr) =>
-          addr.id === id ? updatedAddress : { ...addr, isDefault: false }
+  // Set default address mutation
+  const setDefaultMutation = useMutation({
+    mutationFn: (id: string) =>
+      addressService.updateAddress(id, { isDefault: true }),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: addressKeys.lists() });
+
+      const previousAddresses = queryClient.getQueryData(addressKeys.lists());
+
+      // Optimistically update
+      queryClient.setQueryData(addressKeys.lists(), (old: Address[] = []) =>
+        old.map((addr) =>
+          addr.id === id
+            ? { ...addr, isDefault: true }
+            : { ...addr, isDefault: false }
         )
       );
-      toast.success("Default address updated");
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to update default address";
-      toast.error(message);
-      throw err;
-    }
-  }, []);
 
-  useEffect(() => {
-    fetchAddresses();
-  }, [fetchAddresses]);
+      return { previousAddresses };
+    },
+    onSuccess: () => {
+      toast.success("Default address updated");
+    },
+    onError: (error: Error, _id, context) => {
+      if (context?.previousAddresses) {
+        queryClient.setQueryData(
+          addressKeys.lists(),
+          context.previousAddresses
+        );
+      }
+      toast.error(error.message || "Failed to update default address");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: addressKeys.lists() });
+    },
+  });
 
   return {
-    addresses,
-    isLoading,
-    error,
-    createAddress,
-    updateAddress,
-    deleteAddress,
-    setDefaultAddress,
-    refetch: fetchAddresses,
+    addresses: query.data ?? [],
+    isLoading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+    createAddress: createMutation.mutate,
+    updateAddress: (id: string, data: UpdateAddressDto) =>
+      updateMutation.mutate({ id, data }),
+    deleteAddress: (id: string) => {
+      if (confirm("Are you sure you want to delete this address?")) {
+        deleteMutation.mutate(id);
+      }
+    },
+    setDefaultAddress: setDefaultMutation.mutate,
+    isCreating: createMutation.isPending,
+    isUpdating: updateMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   };
 }

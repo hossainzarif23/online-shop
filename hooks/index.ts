@@ -7,3 +7,4 @@ export * from "./useAddresses";
 export * from "./useOrders";
 export * from "./usePaymentMethods";
 export * from "./useCheckout";
+export * from "./useCart";

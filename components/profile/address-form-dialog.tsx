@@ -11,37 +11,26 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-
-interface Address {
-  id?: string;
-  fullName: string;
-  addressLine1: string;
-  addressLine2?: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  phone: string;
-  isDefault: boolean;
-  type: string;
-}
+import { useAddresses } from "@/hooks/useAddresses";
+import type {
+  Address,
+  CreateAddressDto,
+} from "@/lib/services/address.service";
 
 interface AddressFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   address?: Address | null;
-  onSuccess: () => void;
 }
 
 export function AddressFormDialog({
   open,
   onOpenChange,
   address,
-  onSuccess,
 }: AddressFormDialogProps) {
+  const { createAddress, updateAddress } = useAddresses();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState<Address>({
+  const [formData, setFormData] = useState<CreateAddressDto>({
     fullName: "",
     addressLine1: "",
     addressLine2: "",
@@ -56,7 +45,18 @@ export function AddressFormDialog({
 
   useEffect(() => {
     if (address) {
-      setFormData(address);
+      setFormData({
+        fullName: address.fullName,
+        addressLine1: address.addressLine1,
+        addressLine2: address.addressLine2,
+        city: address.city,
+        state: address.state,
+        postalCode: address.postalCode,
+        country: address.country,
+        phone: address.phone,
+        isDefault: address.isDefault,
+        type: address.type,
+      });
     } else {
       setFormData({
         fullName: "",
@@ -78,34 +78,14 @@ export function AddressFormDialog({
     setLoading(true);
 
     try {
-      const url = address?.id
-        ? `/api/profile/addresses/${address.id}`
-        : "/api/profile/addresses";
-
-      const method = address?.id ? "PATCH" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        toast.success(
-          address?.id
-            ? "Address updated successfully"
-            : "Address added successfully"
-        );
-        onSuccess();
-        onOpenChange(false);
+      if (address?.id) {
+        await updateAddress(address.id, formData);
       } else {
-        const data = await response.json();
-        toast.error(data.error || "Failed to save address");
+        await createAddress(formData);
       }
+      onOpenChange(false);
     } catch (error) {
-      toast.error("An error occurred while saving the address");
+      // Error handled in hook
     } finally {
       setLoading(false);
     }
@@ -133,12 +113,11 @@ export function AddressFormDialog({
               </Label>
               <Input
                 id="fullName"
+                required
                 value={formData.fullName}
                 onChange={(e) =>
                   setFormData({ ...formData, fullName: e.target.value })
                 }
-                required
-                placeholder="John Doe"
               />
             </div>
 
@@ -148,13 +127,11 @@ export function AddressFormDialog({
               </Label>
               <Input
                 id="phone"
-                type="tel"
+                required
                 value={formData.phone}
                 onChange={(e) =>
                   setFormData({ ...formData, phone: e.target.value })
                 }
-                required
-                placeholder="(555) 123-4567"
               />
             </div>
           </div>
@@ -165,24 +142,22 @@ export function AddressFormDialog({
             </Label>
             <Input
               id="addressLine1"
+              required
               value={formData.addressLine1}
               onChange={(e) =>
                 setFormData({ ...formData, addressLine1: e.target.value })
               }
-              required
-              placeholder="123 Main Street"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+            <Label htmlFor="addressLine2">Address Line 2</Label>
             <Input
               id="addressLine2"
-              value={formData.addressLine2}
+              value={formData.addressLine2 || ""}
               onChange={(e) =>
                 setFormData({ ...formData, addressLine2: e.target.value })
               }
-              placeholder="Apt, Suite, Unit, Building, Floor, etc."
             />
           </div>
 
@@ -193,12 +168,11 @@ export function AddressFormDialog({
               </Label>
               <Input
                 id="city"
+                required
                 value={formData.city}
                 onChange={(e) =>
                   setFormData({ ...formData, city: e.target.value })
                 }
-                required
-                placeholder="New York"
               />
             </div>
 
@@ -208,65 +182,63 @@ export function AddressFormDialog({
               </Label>
               <Input
                 id="state"
+                required
                 value={formData.state}
                 onChange={(e) =>
                   setFormData({ ...formData, state: e.target.value })
                 }
-                required
-                placeholder="NY"
-                maxLength={2}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="postalCode">
-                ZIP Code <span className="text-red-500">*</span>
+                Postal Code <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="postalCode"
+                required
                 value={formData.postalCode}
                 onChange={(e) =>
                   setFormData({ ...formData, postalCode: e.target.value })
                 }
-                required
-                placeholder="10001"
               />
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="country">Country</Label>
-              <select
-                id="country"
-                value={formData.country}
-                onChange={(e) =>
-                  setFormData({ ...formData, country: e.target.value })
-                }
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <option value="US">United States</option>
-                <option value="CA">Canada</option>
-                <option value="UK">United Kingdom</option>
-                <option value="AU">Australia</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="country">Country</Label>
+            <select
+              id="country"
+              className="w-full px-3 py-2 border border-input rounded-md"
+              value={formData.country}
+              onChange={(e) =>
+                setFormData({ ...formData, country: e.target.value })
+              }
+            >
+              <option value="US">United States</option>
+              <option value="CA">Canada</option>
+              <option value="UK">United Kingdom</option>
+              <option value="AU">Australia</option>
+            </select>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="type">Address Type</Label>
-              <select
-                id="type"
-                value={formData.type}
-                onChange={(e) =>
-                  setFormData({ ...formData, type: e.target.value })
-                }
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <option value="BOTH">Shipping & Billing</option>
-                <option value="SHIPPING">Shipping Only</option>
-                <option value="BILLING">Billing Only</option>
-              </select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="type">Address Type</Label>
+            <select
+              id="type"
+              className="w-full px-3 py-2 border border-input rounded-md"
+              value={formData.type}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  type: e.target.value as "SHIPPING" | "BILLING" | "BOTH",
+                })
+              }
+            >
+              <option value="BOTH">Shipping & Billing</option>
+              <option value="SHIPPING">Shipping Only</option>
+              <option value="BILLING">Billing Only</option>
+            </select>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -277,28 +249,23 @@ export function AddressFormDialog({
               onChange={(e) =>
                 setFormData({ ...formData, isDefault: e.target.checked })
               }
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="rounded"
             />
-            <Label htmlFor="isDefault" className="font-normal cursor-pointer">
+            <Label htmlFor="isDefault" className="cursor-pointer">
               Set as default address
             </Label>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex gap-2 pt-4">
+            <Button type="submit" disabled={loading}>
+              {loading ? "Saving..." : "Save Address"}
+            </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={loading}
             >
               Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading
-                ? "Saving..."
-                : address?.id
-                  ? "Update Address"
-                  : "Add Address"}
             </Button>
           </div>
         </form>

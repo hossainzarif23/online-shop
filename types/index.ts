@@ -50,20 +50,51 @@ export interface Address {
   isDefault?: boolean;
 }
 
+export interface OrderItem {
+  id: string;
+  quantity: number;
+  price: number;
+  product: {
+    id: string;
+    name: string;
+    slug: string;
+    images: string[];
+  };
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
   userId: string;
   status: OrderStatus;
+  subtotal: number | string;
+  tax: number | string;
+  shipping: number | string;
+  total: number | string;
+  paymentMethod: string;
+  paymentStatus: PaymentStatus;
+  transactionId?: string | null;
+  items: OrderItem[];
+  shippingAddress: Address;
+  billingAddress?: Address;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+export interface CreateOrderDto {
+  items: {
+    productId: string;
+    quantity: number;
+    price: number;
+  }[];
+  shippingAddress: Omit<Address, "id" | "isDefault">;
+  billingAddress: Omit<Address, "id" | "isDefault">;
+  paymentMethod: string;
+  transactionId?: string;
   subtotal: number;
   tax: number;
   shipping: number;
   total: number;
-  paymentMethod: string;
-  paymentStatus: PaymentStatus;
-  transactionId?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export type OrderStatus =

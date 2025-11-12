@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
     const featured = searchParams.get("featured");
     const limit = searchParams.get("limit");
     const category = searchParams.get("category");
+    const categorySlug = searchParams.get("categorySlug");
     const search = searchParams.get("search");
 
     const where: any = { published: true };
@@ -17,6 +18,21 @@ export async function GET(req: NextRequest) {
 
     if (category) {
       where.categoryId = category;
+    }
+
+    if (categorySlug) {
+      // First find the category by slug, then filter products
+      const categoryRecord = await prisma.category.findUnique({
+        where: { slug: categorySlug },
+        select: { id: true },
+      });
+
+      if (categoryRecord) {
+        where.categoryId = categoryRecord.id;
+      } else {
+        // If category not found, return empty array
+        return NextResponse.json([]);
+      }
     }
 
     if (search) {

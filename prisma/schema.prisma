@@ -113,34 +113,78 @@ model Product {
 
 model Order {
   id              String      @id @default(cuid())
+  // Human-readable order number (e.g., "ORD-2024-00001")
   orderNumber     String      @unique
   userId          String
   user            User        @relation(fields: [userId], references: [id])
-  status          OrderStatus @default(PENDING)
   
+  // Order Status & Fulfillment
+  status          OrderStatus @default(PENDING)
+  fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)
+  
+  // Financial Details
   subtotal        Decimal     @db.Decimal(10, 2)
   tax             Decimal     @db.Decimal(10, 2)
   shipping        Decimal     @db.Decimal(10, 2)
+  discount        Decimal     @default(0) @db.Decimal(10, 2)
   total           Decimal     @db.Decimal(10, 2)
   
+  // Addresses
   shippingAddressId String
   shippingAddress Address     @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
   billingAddressId String
   billingAddress  Address     @relation("BillingAddress", fields: [billingAddressId], references: [id])
   
-  paymentMethod   String
+  // Payment Information
+  paymentMethod   PaymentMethodType
   paymentStatus   PaymentStatus @default(PENDING)
-  transactionId   String?
+  paymentProvider String?     // "authorize.net", "stripe", "paypal", etc.
   
+  // Payment Gateway Details
+  transactionId   String?     // Payment gateway transaction ID
+  authorizationCode String?   // Authorization code from payment gateway
+  receiptNumber   String?     // Receipt number for customer reference
+  
+  // Refund Information
+  refundAmount    Decimal?    @db.Decimal(10, 2)
+  refundReason    String?
+  refundedAt      DateTime?
+  
+  // Fulfillment Details
+  trackingNumber  String?
+  trackingUrl     String?
+  carrier         String?     // "USPS", "FedEx", "UPS", "DHL"
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  estimatedDelivery DateTime?
+  
+  // Cancellation Details
+  cancellationReason String?
+  cancelledAt     DateTime?
+  cancelledBy     String?     // User ID or "SYSTEM" or "ADMIN"
+  
+  // Order Items
   items           OrderItem[]
   
-  notes           String?
+  // Order Timeline (status changes)
+  timeline        OrderTimeline[]
   
+  // Additional Information
+  notes           String?     // Customer notes
+  internalNotes   String?     // Admin/internal notes
+  ipAddress       String?     // Customer IP for fraud prevention
+  
+  // Timestamps
+  confirmedAt     DateTime?   // When order was confirmed
+  processingAt    DateTime?   // When order started processing
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   @@index([userId])
   @@index([orderNumber])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
 }
 
 model OrderItem {
@@ -157,6 +201,22 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
+}
+
+model OrderTimeline {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  status    OrderStatus
+  message   String
+  metadata  String?  // JSON string for additional data
+  createdBy String?  // User ID, "SYSTEM", or "PAYMENT_GATEWAY"
+  
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([createdAt])
 }
 
 model Address {
@@ -256,18 +316,46 @@ enum AddressType {
 }
 
 enum OrderStatus {
-  PENDING
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
+  PENDING           // Order created, awaiting payment
+  PAYMENT_PENDING   // Payment initiated but not confirmed
+  CONFIRMED         // Payment confirmed, ready to process
+  PROCESSING        // Order is being prepared
+  SHIPPED           // Order has been shipped
+  OUT_FOR_DELIVERY  // Order is out for delivery
+  DELIVERED         // Order delivered successfully
+  CANCELLED         // Order cancelled
+  REFUNDED          // Order refunded
+  FAILED            // Order failed (payment or other issues)
+  ON_HOLD           // Order on hold (review needed)
 }
 
 enum PaymentStatus {
-  PENDING
-  AUTHORIZED
-  CAPTURED
-  FAILED
-  REFUNDED
+  PENDING           // Payment not yet initiated
+  AUTHORIZED        // Payment authorized (funds reserved)
+  CAPTURED          // Payment captured (funds taken)
+  PARTIALLY_CAPTURED // Partial payment captured
+  FAILED            // Payment failed
+  DECLINED          // Payment declined by gateway
+  CANCELLED         // Payment cancelled
+  REFUNDED          // Payment refunded
+  PARTIALLY_REFUNDED // Partial refund issued
+  EXPIRED           // Authorization expired
+  PENDING_REVIEW    // Payment under review (fraud check)
+}
+
+enum FulfillmentStatus {
+  UNFULFILLED       // Not yet fulfilled
+  PARTIALLY_FULFILLED // Some items fulfilled
+  FULFILLED         // All items fulfilled
+  RESTOCKED         // Items returned to stock
+}
+
+enum PaymentMethodType {
+  CREDIT_CARD       // Credit/Debit card
+  AUTHORIZE_NET     // Authorize.net
+  STRIPE            // Stripe
+  PAYPAL            // PayPal
+  BANK_TRANSFER     // Bank transfer
+  CASH_ON_DELIVERY  // COD
+  STORE_CREDIT      // Store credit
 }

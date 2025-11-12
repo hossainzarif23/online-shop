@@ -6,6 +6,7 @@
  * Reduced from 290 lines to ~90 lines
  */
 
+import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
@@ -26,6 +27,13 @@ export default function OrderConfirmationPage() {
   const { status } = useSession();
   const { order, isLoading, error } = useOrder(params.id as string);
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/login");
+    }
+  }, [status, router]);
+
   // Loading state
   if (status === "loading" || isLoading) {
     return (
@@ -35,10 +43,13 @@ export default function OrderConfirmationPage() {
     );
   }
 
-  // Redirect if not authenticated
+  // Show loading state during redirect
   if (status === "unauthenticated") {
-    router.push("/auth/login");
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
   // Error or order not found

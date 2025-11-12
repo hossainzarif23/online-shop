@@ -303,6 +303,9 @@ export async function POST(request: NextRequest) {
                       ? txnMessages.getMessage()[0].getDescription()
                       : "Transaction successful";
 
+                  // Generate receipt number for the order
+                  const receiptNumber = `RCP-${Date.now()}-${transId}`;
+
                   console.log("Sending success response...");
 
                   resolve(
@@ -310,6 +313,7 @@ export async function POST(request: NextRequest) {
                       success: true,
                       transactionId: transId,
                       authCode: authCode,
+                      receiptNumber: receiptNumber,
                       responseCode: responseCode,
                       message: message,
                     })

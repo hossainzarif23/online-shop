@@ -80,12 +80,17 @@ export function useCheckout(items: CartItem[], totals: CheckoutTotals) {
         })),
         shippingAddress: data.shippingAddress,
         billingAddress: data.billingAddress,
-        paymentMethod: "CREDIT_CARD",
+        paymentMethod: "AUTHORIZE_NET",
         transactionId: paymentResult.transactionId,
+        authorizationCode: paymentResult.authCode,
+        receiptNumber: paymentResult.receiptNumber,
+        paymentProvider: "authorize.net",
         subtotal: totals.subtotal,
         tax: totals.tax,
         shipping: totals.shipping,
+        discount: 0,
         total: totals.total,
+        notes: "",
       });
 
       // Clear cart

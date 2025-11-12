@@ -4,6 +4,7 @@
  */
 
 import Link from "next/link";
+import { Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { priceHelpers, dateHelpers, orderHelpers } from "@/lib/helpers";
 import type { Order } from "@/types";
@@ -83,6 +84,12 @@ export function OrderSummaryCard({ order }: OrderSummaryCardProps) {
 
       <div className="pt-4 space-y-2">
         <Button className="w-full" asChild>
+          <Link href={`/orders/${order.id}/receipt`}>
+            <Receipt className="w-4 h-4 mr-2" />
+            View Receipt
+          </Link>
+        </Button>
+        <Button variant="outline" className="w-full" asChild>
           <Link href="/products">Continue Shopping</Link>
         </Button>
         <Button variant="outline" className="w-full" asChild>

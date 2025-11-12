@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateOrderNumber } from "@/lib/utils";
+import type { OrderStatus, PaymentStatus } from "@/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   try {
     const session: any = await getServerSession(authOptions);
 
-    if (!session?.user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -53,11 +54,21 @@ export async function POST(req: NextRequest) {
       shippingAddress,
       billingAddress,
       paymentMethod,
+      transactionId,
+      authorizationCode,
+      receiptNumber,
+      paymentProvider,
       subtotal,
       tax,
       shipping,
+      discount = 0,
       total,
+      notes,
+      ipAddress,
     } = body;
+
+    console.log("Creating order for user:", session.user.id);
+    console.log("Shipping address data:", shippingAddress);
 
     // Ensure database connection is active
     try {
@@ -72,38 +83,96 @@ export async function POST(req: NextRequest) {
     // Create addresses first
     const createdShippingAddress = await prisma.address.create({
       data: {
-        ...shippingAddress,
+        fullName: shippingAddress.fullName,
+        addressLine1: shippingAddress.addressLine1,
+        addressLine2: shippingAddress.addressLine2 || null,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        postalCode: shippingAddress.postalCode,
+        country: shippingAddress.country || "US",
+        phone: shippingAddress.phone,
         userId: session.user.id,
+        type: "SHIPPING",
       },
     });
 
     const createdBillingAddress = await prisma.address.create({
       data: {
-        ...billingAddress,
+        fullName: billingAddress.fullName,
+        addressLine1: billingAddress.addressLine1,
+        addressLine2: billingAddress.addressLine2 || null,
+        city: billingAddress.city,
+        state: billingAddress.state,
+        postalCode: billingAddress.postalCode,
+        country: billingAddress.country || "US",
+        phone: billingAddress.phone,
         userId: session.user.id,
+        type: "BILLING",
       },
     });
+
+    // Determine initial status based on payment
+    let orderStatus: OrderStatus = "PENDING";
+    let paymentStatus: PaymentStatus = "PENDING";
+
+    if (transactionId && authorizationCode) {
+      // Payment was authorized
+      orderStatus = "CONFIRMED";
+      paymentStatus = "AUTHORIZED";
+    }
 
     // Create order
     const order = await prisma.order.create({
       data: {
         orderNumber: generateOrderNumber(),
         userId: session.user.id,
-        status: "PENDING",
+        status: orderStatus,
+        fulfillmentStatus: "UNFULFILLED",
         subtotal,
         tax,
         shipping,
+        discount,
         total,
         paymentMethod,
-        paymentStatus: "PENDING",
+        paymentStatus,
+        paymentProvider: paymentProvider || null,
+        transactionId: transactionId || null,
+        authorizationCode: authorizationCode || null,
+        receiptNumber: receiptNumber || null,
         shippingAddressId: createdShippingAddress.id,
         billingAddressId: createdBillingAddress.id,
+        notes: notes || null,
+        ipAddress: ipAddress || null,
+        confirmedAt: transactionId ? new Date() : null,
         items: {
           create: items.map((item: any) => ({
             productId: item.productId,
             quantity: item.quantity,
             price: item.price,
           })),
+        },
+        timeline: {
+          create: [
+            {
+              status: orderStatus as "PAYMENT_PENDING" | "CONFIRMED",
+              message: `Order created by customer`,
+              createdBy: session.user.id,
+            },
+            ...(transactionId
+              ? [
+                  {
+                    status: "CONFIRMED" as const,
+                    message: `Payment authorized - Transaction ID: ${transactionId}`,
+                    createdBy: "PAYMENT_GATEWAY",
+                    metadata: JSON.stringify({
+                      transactionId,
+                      authorizationCode,
+                      paymentProvider,
+                    }),
+                  },
+                ]
+              : []),
+          ],
         },
       },
       include: {
@@ -116,6 +185,16 @@ export async function POST(req: NextRequest) {
         billingAddress: true,
       },
     });
+
+    // TODO: After migration, add timeline entries:
+    // await prisma.orderTimeline.create({
+    //   data: {
+    //     orderId: order.id,
+    //     status: orderStatus,
+    //     message: `Order created by customer`,
+    //     createdBy: session.user.id,
+    //   },
+    // });
 
     return NextResponse.json(order, { status: 201 });
   } catch (error) {

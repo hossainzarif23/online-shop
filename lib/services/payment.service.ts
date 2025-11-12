@@ -37,7 +37,11 @@ export interface PaymentRequestDto {
 export interface PaymentResponse {
   success: boolean;
   transactionId?: string;
+  authCode?: string;
+  receiptNumber?: string;
   error?: string;
+  errorCode?: string;
+  message?: string;
 }
 
 export const paymentService = {

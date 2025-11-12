@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function TestPaymentPage() {
+  const { data: session } = useSession();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
 
@@ -103,10 +105,37 @@ export default function TestPaymentPage() {
           <CardTitle>Payment Gateway Test</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Session Status */}
+          <div
+            className={`p-4 rounded-lg ${session ? "bg-green-50 border border-green-200" : "bg-yellow-50 border border-yellow-200"}`}
+          >
+            <h3 className="font-semibold mb-2">
+              {session ? "✅ Logged In" : "⚠️ Not Logged In"}
+            </h3>
+            {session ? (
+              <p className="text-sm">
+                User: {session.user?.email || session.user?.name}
+              </p>
+            ) : (
+              <p className="text-sm">
+                You need to{" "}
+                <a href="/auth/login" className="text-blue-600 underline">
+                  log in
+                </a>{" "}
+                to test full checkout with order creation.
+                <br />
+                Or use: <strong>admin@example.com</strong> /{" "}
+                <strong>admin123</strong>
+              </p>
+            )}
+          </div>
+
           <div className="space-y-2">
             <h3 className="font-semibold">Test Data:</h3>
             <div className="bg-slate-100 p-4 rounded text-sm font-mono">
-              <p>Amount: $10.00 + random cents (to avoid duplicate detection)</p>
+              <p>
+                Amount: $10.00 + random cents (to avoid duplicate detection)
+              </p>
               <p>Card: 4111111111111111</p>
               <p>Expiry: 12/2025</p>
               <p>CVV: 123</p>
@@ -149,6 +178,12 @@ export default function TestPaymentPage() {
                   <p>
                     <span className="font-semibold">Auth Code:</span>{" "}
                     {result.data.authCode}
+                  </p>
+                )}
+                {result.data.receiptNumber && (
+                  <p>
+                    <span className="font-semibold">Receipt Number:</span>{" "}
+                    {result.data.receiptNumber}
                   </p>
                 )}
                 {result.data.error && (
@@ -195,11 +230,14 @@ export default function TestPaymentPage() {
             <h3 className="font-semibold mb-2">⚠️ Important Notes:</h3>
             <ul className="list-disc list-inside space-y-1">
               <li>
-                Make sure you have valid Authorize.net sandbox credentials in your{" "}
-                <code className="bg-yellow-100 px-1 rounded">.env</code> file.
+                Make sure you have valid Authorize.net sandbox credentials in
+                your <code className="bg-yellow-100 px-1 rounded">.env</code>{" "}
+                file.
               </li>
               <li>
-                The test amount varies slightly each time to avoid Authorize.Net's duplicate transaction detection (2-minute window).
+                The test amount varies slightly each time to avoid
+                Authorize.Net's duplicate transaction detection (2-minute
+                window).
               </li>
               <li>
                 Get free sandbox credentials at:{" "}

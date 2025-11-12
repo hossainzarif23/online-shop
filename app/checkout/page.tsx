@@ -6,7 +6,7 @@
  * Reduced from 623 lines to ~180 lines
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useAtom } from "jotai";
@@ -88,6 +88,20 @@ export default function CheckoutPage() {
     },
   });
 
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/login?callbackUrl=/checkout");
+    }
+  }, [status, router]);
+
+  // Redirect if cart is empty
+  useEffect(() => {
+    if (status !== "loading" && items.length === 0) {
+      router.push("/cart");
+    }
+  }, [status, items.length, router]);
+
   // Loading state
   if (status === "loading") {
     return (
@@ -97,16 +111,13 @@ export default function CheckoutPage() {
     );
   }
 
-  // Redirect if not authenticated
-  if (status === "unauthenticated") {
-    router.push("/auth/login?callbackUrl=/checkout");
-    return null;
-  }
-
-  // Redirect if cart is empty
-  if (items.length === 0) {
-    router.push("/cart");
-    return null;
+  // Show loading state during redirects
+  if (status === "unauthenticated" || items.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
 
   const onSubmit = async (data: CheckoutFormData) => {
